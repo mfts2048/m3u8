@@ -1,10 +1,11 @@
+import { ensureFileSync } from "fs-extra";
 import {
 	readdirSync,
-	readFileSync,
-	existsSync,
 	writeFileSync,
-	ensureFileSync,
-} from "fs-extra";
+	accessSync,
+	constants,
+	readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import request from "request";
 import ProgressBar from "progress";
@@ -18,40 +19,64 @@ interface Option {
 
 const m3u8_dir = "H:\\App\\static\\m3u8";
 
+function isExists(path: string) {
+	try {
+		accessSync(path, constants.R_OK | constants.W_OK);
+		return true;
+	} catch (err) {
+		return false;
+	}
+}
+
 let options: Option[];
 function bootstrap() {
 	console.log("server is running");
 	options = readdirSync(join(m3u8_dir))
-		.reverse()
 		.map((key) => {
-			const file_path = join(m3u8_dir, key, "info.json");
-			if (existsSync(file_path)) {
-				const file_content = readFileSync(file_path);
-				let url = JSON.parse(file_content.toString())._url;
-				url = url.replace("newindex.m3u8", "index.m3u8");
+			const absolutePath = (filename: string) => {
+				return join(m3u8_dir, key, filename);
+			};
 
-				return { url, key };
+			const placeholderPath = absolutePath("placeholder.txt");
+			if (isExists(placeholderPath)) return undefined;
+
+			const m3u8BackPath = absolutePath("index.m3u8.back");
+			if (isExists(m3u8BackPath)) {
+				const m3u8BackContent = readFileSync(m3u8BackPath).toString();
+				return { body: m3u8BackContent, key };
 			}
 
-			const meu3_back_path = join(m3u8_dir, key, "index.m3u8.back");
-			if (existsSync(meu3_back_path)) {
-				const body = readFileSync(meu3_back_path);
-				return { body, key };
+			const infoPath = absolutePath("info.json");
+			if (isExists(infoPath)) {
+				const infoContent = readFileSync(infoPath).toString();
+				let url = JSON.parse(infoContent)._url;
+				url = url.replace("newindex.m3u8", "index.m3u8");
+				return { url, key };
 			}
 
 			return undefined;
 		})
 		.filter((el) => !!el) as Option[];
 
-	performJob(0);
+	console.log("options", options);
+	console.log("收集完成，准备开启下载");
+	new Job(options);
 }
 
-function performJob(index: number) {
-	const option = options[index];
-	if (option) {
-		downloadM3u8(option, () => {
-			performJob(index + 1);
-		});
+class Job {
+	private options: Option[];
+	constructor(options: Option[]) {
+		this.options = options;
+		this.setup();
+	}
+
+	setup() {
+		const option = this.options.shift();
+		if (option) {
+			downloadM3u8(option, () => {
+				this.setup();
+			});
+		}
 	}
 }
 
@@ -64,14 +89,10 @@ interface UrlOption {
 function downloadM3u8(option: Option, callback: Function) {
 	const { url, key, body: fileBody } = option;
 	console.log("key", key);
-	const placeholderPath = join(m3u8_dir, key, "placeholder.txt");
-
-	if (existsSync(placeholderPath)) {
-		return callback();
-	}
 
 	const doBin = async (body: string) => {
 		const urls = parseURLs(body);
+		console.log("urls", urls);
 		urls.shift();
 		const bar = new ProgressBar(
 			"  downloading [:bar] :current/:total :percent",
@@ -89,7 +110,7 @@ function downloadM3u8(option: Option, callback: Function) {
 				bar.tick(1);
 				const binPath = join(m3u8_dir, key, parseUrlName(el.name));
 
-				if (existsSync(binPath)) {
+				if (isExists(binPath)) {
 					return;
 				} else {
 					const body = await axios(el.url);
@@ -99,6 +120,7 @@ function downloadM3u8(option: Option, callback: Function) {
 			});
 
 		if (errors.length === 0) {
+			const placeholderPath = join(m3u8_dir, key, "placeholder.txt");
 			ensureFileSync(placeholderPath);
 		} else {
 			console.log("存有异常", errors);
