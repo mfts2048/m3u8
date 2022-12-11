@@ -1,0 +1,33 @@
+{
+  "name": "m3u8",
+  "version": "1.0.0",
+  "description": "Download the file using the m3u8 suffix link",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mfts2048/m3u8.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mfts2048/m3u8/issues"
+  },
+  "homepage": "https://github.com/mfts2048/m3u8#readme",
+  "dependencies": {
+    "@supercharge/promise-pool": "^2.3.2",
+    "fs-extra": "^11.1.0",
+    "path": "^0.12.7",
+    "progress": "^2.0.3",
+    "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.13",
+    "@types/node": "^18.11.13",
+    "@types/progress": "^2.0.5",
+    "@types/request": "^2.48.8"
+  }
+}
