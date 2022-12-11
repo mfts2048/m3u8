@@ -14,7 +14,7 @@ import { PromisePool } from "@supercharge/promise-pool";
 interface Option {
 	url?: string;
 	key: string;
-	body?: string;
+	body?: Buffer;
 }
 
 const m3u8_dir = "H:\\App\\static\\m3u8";
@@ -58,7 +58,6 @@ function bootstrap() {
 		})
 		.filter((el) => !!el) as Option[];
 
-	console.log("options", options);
 	console.log("收集完成，准备开启下载");
 	new Job(options);
 }
@@ -70,12 +69,11 @@ class Job {
 		this.setup();
 	}
 
-	setup() {
+	async setup() {
 		const option = this.options.shift();
 		if (option) {
-			downloadM3u8(option, () => {
-				this.setup();
-			});
+			await downloadM3u8(option);
+			this.setup();
 		}
 	}
 }
@@ -86,54 +84,41 @@ interface UrlOption {
 	url: string;
 }
 
-function downloadM3u8(option: Option, callback: Function) {
+async function downloadM3u8(option: Option) {
 	const { url, key, body: fileBody } = option;
 	console.log("key", key);
 
-	const doBin = async (body: string) => {
-		const urls = parseURLs(body);
-		console.log("urls", urls);
-		urls.shift();
-		const bar = new ProgressBar(
-			"  downloading [:bar] :current/:total :percent",
-			{
-				complete: "-",
-				incomplete: " ",
-				width: 20,
-				total: urls.length,
-			},
-		);
+	let body = url ? await axios(url) : (fileBody as Buffer);
 
-		const { results, errors } = await PromisePool.for<UrlOption>(urls)
-			.withConcurrency(8)
-			.process(async (el) => {
-				bar.tick(1);
-				const binPath = join(m3u8_dir, key, parseUrlName(el.name));
+	const urls = parseURLs(body.toString());
+	urls.shift();
+	const bar = new ProgressBar("downloading [:bar] :current/:total :percent", {
+		complete: "#",
+		incomplete: "-",
+		width: 20,
+		total: urls.length,
+	});
 
-				if (isExists(binPath)) {
-					return;
-				} else {
-					const body = await axios(el.url);
-					writeFileSync(binPath, body);
-					return;
-				}
-			});
+	const { results, errors } = await PromisePool.for<UrlOption>(urls)
+		.withConcurrency(8)
+		.process(async (el) => {
+			bar.tick(1);
+			const binPath = join(m3u8_dir, key, parseUrlName(el.name));
 
-		if (errors.length === 0) {
-			const placeholderPath = join(m3u8_dir, key, "placeholder.txt");
-			ensureFileSync(placeholderPath);
-		} else {
-			console.log("存有异常", errors);
-		}
-		callback();
-	};
-
-	if (url) {
-		axios(url).then((body) => {
-			doBin(body.toString());
+			if (isExists(binPath)) {
+				return;
+			} else {
+				const body = await axios(el.url);
+				writeFileSync(binPath, body);
+				return;
+			}
 		});
-	} else if (fileBody) {
-		doBin(fileBody.toString());
+
+	if (errors.length === 0) {
+		const placeholderPath = join(m3u8_dir, key, "placeholder.txt");
+		ensureFileSync(placeholderPath);
+	} else {
+		console.log("存有异常", errors);
 	}
 }
 
